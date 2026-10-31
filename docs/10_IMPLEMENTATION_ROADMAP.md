@@ -1,0 +1,151 @@
+# 10 — Roadmap de implementación
+
+## 1. Supuestos de estimación
+- 1 desarrollador full‑time (o equivalente) usando Codex para generar código; **el esfuerzo incluye revisar, testear e integrar** lo generado (aprox. 35–45 % del tiempo).
+- Sprints de **1 semana** (S0–S1 y S13 pueden ser más cortos). Unidad de esfuerzo: días‑persona (dp).
+- Complejidad: B (baja), M (media), A (alta). Riesgo: B/M/A.
+- Total MVP estimado: **14–17 semanas calendario** (≈ 60–75 dp). Con dedicación parcial multiplicar proporcionalmente.
+- Los sprints son **secuenciales salvo indicación**; cada uno termina con *demo verificable* y *PR mergeado con CI verde*.
+
+## 2. Definición de terminado (global)
+1. Código en `main` vía PR revisado; CI verde (lint, tipos, unit, integración, pgTAP).
+2. Migraciones aplicadas en *staging* sin errores; reversibles o con plan de rollback.
+3. Tests nuevos para reglas de negocio y autorización del sprint.
+4. Sin secretos ni PII en logs; RLS probada para tablas nuevas.
+5. Documentación afectada actualizada (`docs/`), ADR si hubo decisión nueva.
+6. Criterios de aceptación del sprint demostrados.
+
+## 3. Resumen
+
+| Sprint | Tema | Esfuerzo | Complejidad | Riesgo |
+|---|---|---|---|---|
+| S0 | Configuración del proyecto | 3–4 dp | B | B |
+| S1 | Multi‑tenancy base | 4–5 dp | M | M |
+| S2 | Autenticación y roles | 5 dp | M | M |
+| S3 | Modelo de datos completo + RLS | 5 dp | A | M |
+| S4 | Profesionales y servicios | 5 dp | M | B |
+| S5 | Horarios y disponibilidad (cálculo) | 6 dp | A | A |
+| S6 | Motor de reservas (BD) | 7 dp | A | A |
+| S7 | Portal público | 6 dp | M | M |
+| S8 | Panel administrativo + barbero | 8–9 dp | A | M |
+| S9 | Notificaciones | 5 dp | M | M |
+| S10 | API de integración | 5 dp | M | M |
+| S11 | Integración con Google Apps Script | 6–7 dp | A | A |
+| S12 | Pruebas de seguridad y concurrencia | 4–5 dp | M | M |
+| S13 | Despliegue productivo y piloto | 3–4 dp | M | M |
+
+> Reordenamiento menor respecto del orden de prioridad solicitado: el **modelo de datos** (S3) se ejecuta antes de profesionales/servicios para fijar el esquema y las políticas RLS de una sola vez; el resto respeta el orden pedido.
+
+## 4. Detalle por sprint
+
+### S0 — Configuración del proyecto
+- **Objetivo**: base reproducible y automatizada.
+- **Alcance**: repo, Next.js + TS estricto + Tailwind + shadcn, ESLint/Prettier, Vitest, Playwright (smoke), Supabase CLI local (Docker), GitHub Actions, Vercel (preview), Sentry, variables de entorno tipadas (Zod), logger con `request_id`, convenciones (`AGENTS.md`).
+- **Dependencias**: cuentas Vercel/Supabase/GitHub.
+- **Tareas**: scaffolding; estructura `modules/`; regla ESLint de import restringido; pipeline CI; `GET /api/health`.
+- **Tablas/Endpoints**: ninguna / `GET /api/health`.
+- **Pruebas**: smoke e2e, unit de utilidades.
+- **Aceptación**: `pnpm dev`, `pnpm test`, `pnpm lint` funcionan; despliegue *preview* por PR; Supabase local levanta con `supabase start`.
+
+### S1 — Arquitectura multi‑tenant
+- **Objetivo**: contexto de tenant y esquema base.
+- **Alcance**: tablas `businesses`, `business_settings`; resolvedor de tenant (slug / ruta / token); helpers `app.*`; plantilla de migración con RLS; seed `create_business()`; convención de FKs compuestas.
+- **Dependencias**: S0.
+- **Tareas**: migraciones, `TenantContext`, middleware de resolución, tests pgTAP de patrón RLS.
+- **Endpoints**: `GET /public/{slug}`.
+- **Pruebas**: aislamiento básico entre 2 negocios seed; slug inválido/reservado.
+- **Aceptación**: dos negocios seed no se ven entre sí en SQL con distintos usuarios; `GET /public/{slug}` correcto y 404 para inexistente.
+
+### S2 — Autenticación y roles
+- **Objetivo**: login seguro y RBAC por negocio.
+- **Alcance**: Supabase Auth (SSR), `users`, `business_members`, `platform_admins`, `app.manage_member()`, invitaciones, MFA TOTP para owner/admin, `can()`, selector de negocio, layout autenticado.
+- **Tablas**: `users`, `business_members`, `platform_admins`, `audit_logs` (base).
+- **Endpoints**: `GET/POST /members…`, `/me`.
+- **Pruebas**: matriz de permisos (unit), escalamiento de privilegios (X‑05, X‑06), pgTAP de RLS de membresía.
+- **Aceptación**: owner invita admin y barbero; barbero no puede cambiar roles; usuario en 2 negocios cambia de contexto; último owner no se puede quitar.
+
+### S3 — Modelo de datos completo
+- **Objetivo**: esquema final del MVP con integridad.
+- **Alcance**: todas las tablas del doc 04 (`staff_members`, `services`, `staff_services`, `working_hours`, `schedule_exceptions`, `time_blocks`, `customers`, `appointments` con `EXCLUDE`, `appointment_events`, `notifications`, `integration_credentials`, `external_id_mappings`, `idempotency_keys`), triggers (`touch_updated_at`, append‑only, overlap de horarios), privilegios, RLS, tipos TS generados.
+- **Pruebas**: pgTAP: constraints, FKs compuestas, EXCLUDE (solapes, contiguidad), privilegios (X‑10), append‑only.
+- **Aceptación**: suite pgTAP verde; `supabase db reset` reproduce el esquema; intento de cruzar tenants falla por FK.
+
+### S4 — Profesionales y servicios
+- **Objetivo**: catálogo operativo.
+- **Alcance**: CRUD profesionales y servicios, `staff_services`, baja lógica, desactivación con reporte de reservas futuras, UI admin básica (listas y formularios), validación Zod.
+- **Endpoints**: doc 05 §2.2 (sin horarios) y §2.3.
+- **Pruebas**: unit + integración API; autorización por rol; unicidad de nombre por negocio.
+- **Aceptación**: admin gestiona profesionales/servicios; barbero sólo lectura; servicio sin profesionales no aparece en público.
+
+### S5 — Horarios y disponibilidad
+- **Objetivo**: calcular slots correctamente (cálculo informativo).
+- **Alcance**: `working_hours` (vigencias, múltiples intervalos), `schedule_exceptions`, `time_blocks`, UI del editor de horarios, módulo puro `scheduling` (`computeSlots`), `GET availability` (público y privado), caché corto.
+- **Dependencias**: S3, S4.
+- **Pruebas**: unit exhaustivos + property‑based (fast‑check) + casos DST con zona de prueba (p. ej. `America/New_York`), escenarios B‑02…B‑23 (parte de cálculo).
+- **Aceptación**: slots correctos con descansos, feriados, vacaciones, vigencias y buffers; p95 < 600 ms con datos de 1 negocio (10 profesionales, 60 días).
+
+### S6 — Motor de reservas
+- **Objetivo**: garantía transaccional.
+- **Alcance**: `app.create_appointment`, `reschedule`, `transition`, `cancel`; asignación "cualquier profesional"; snapshots; eventos; outbox (encolado); idempotencia; contadores de cliente; normalización de teléfono y match de clientes; endpoints de reservas y clientes.
+- **Pruebas**: concurrencia (B‑01, B‑11 con 50+ hilos), todas las transiciones, idempotencia, X‑03.
+- **Aceptación**: 0 dobles reservas en la prueba de estrés; reprogramación atómica; estados inválidos rechazados con `409`.
+
+### S7 — Portal público
+- **Objetivo**: reserva end‑to‑end sin cuenta.
+- **Alcance**: flujo de 5 pasos, Turnstile, rate limits, página de gestión por token, `.ics`, SEO/OG, PWA manifest.
+- **Pruebas**: e2e Playwright (móvil), abuso (rate limit), accesibilidad (axe), `SLOT_TAKEN` UX.
+- **Aceptación**: reservar, cancelar y reprogramar desde el celular; Lighthouse móvil ≥ 90 (rendimiento/accesibilidad); sin fuga de datos del cliente existente.
+
+### S8 — Panel administrativo y de barbero
+- **Alcance**: dashboard, agenda día/semana, detalle, nueva reserva, bloqueos, clientes (búsqueda, ficha, fusión), estadísticas básicas, vista Barbero, PWA instalable.
+- **Pruebas**: e2e por rol; permisos de UI y de API; fusión de clientes; rendimiento de agenda.
+- **Aceptación**: admin opera un día completo sin tocar BD; barbero ve sólo lo propio; acciones auditadas.
+
+### S9 — Notificaciones
+- **Alcance**: worker (`dispatch`, `expire_pending`), provider de email, plantillas, recordatorios, reintentos/backoff, dedupe, panel de estado (cola/dead), `pg_cron`/`pg_net` o Vercel Cron.
+- **Pruebas**: idempotencia (doble ejecución del worker), reintentos, cancelación de recordatorios al reprogramar, proveedor simulado con fallos.
+- **Aceptación**: emails de confirmación/cancelación/reprogramación/recordatorio correctos; ningún duplicado con 2 workers concurrentes; `dead` genera alerta.
+
+### S10 — API de integración
+- **Alcance**: credenciales (service/user), scopes, rotación/revocación, `/integrations/me`, `/integrations/changes`, mapeos, vínculos externos, auditoría de integración, rate limit por token, documentación OpenAPI.
+- **Pruebas**: X‑07, X‑08; cursor y solapamiento; tombstones; Modo B con restricciones.
+- **Aceptación**: token revocado deja de funcionar ≤ 30 s; `changes` entrega todo cambio sin pérdidas en prueba de carga con commits concurrentes.
+
+### S11 — Integración con Google Apps Script
+- **Alcance**: librería `TurnosClient` y `TurnosSync` (GAS), vistas de agenda en la app actual, acciones de estado, flujo precargado de Registro de Servicios, columnas `ID`/`ID Turno`, `Turnos_RO`, reconciliación nocturna, import inicial de clientes con *dry run*, vinculación manual de barberos/servicios.
+- **Dependencias**: S10; resolver preguntas S3/S4 del doc 01.
+- **Pruebas**: contra *staging* con hoja de pruebas; doble clic/duplicados; fallo parcial; cursor perdido; caída de API.
+- **Aceptación**: flujo "reserva → completar → registro precargado → vínculo" sin duplicados; dashboards leen `Turnos_RO`; con la API caída la app GAS existente sigue funcionando para el resto de módulos.
+
+### S12 — Seguridad y concurrencia
+- **Alcance**: suite de aislamiento (X‑01…X‑14), carga (k6) de reservas simultáneas y disponibilidad, revisión OWASP ASVS (checklist), escaneo de dependencias/secretos, prueba de restauración de backup, ajuste de límites.
+- **Aceptación**: checklist de doc 08 §10 completo salvo revisión legal; 0 hallazgos críticos/altos abiertos.
+
+### S13 — Despliegue productivo y piloto
+- **Alcance**: entornos prod/staging, dominios, DNS de email (SPF/DKIM/DMARC), monitoreo y alertas, runbooks, datos reales de la barbería (staff, servicios, horarios), capacitación, piloto controlado (2 semanas), plan de rollback.
+- **Aceptación**: reservas reales durante el piloto sin incidentes severos; métricas del doc 01 §8 medidas.
+
+## 5. Dependencias entre sprints
+```mermaid
+flowchart LR
+  S0-->S1-->S2-->S3-->S4-->S5-->S6-->S7-->S8
+  S6-->S9
+  S6-->S10-->S11
+  S8-->S12
+  S9-->S12
+  S11-->S12-->S13
+```
+S7, S9 y S10 pueden solaparse parcialmente tras S6 si hay más de una persona.
+
+## 6. Riesgos y mitigaciones del plan
+| Riesgo | Mitigación |
+|---|---|
+| Subestimar el motor (S5/S6) | Presupuesto con holgura; tests de propiedades desde el inicio; no empezar UI de reservas antes de S6 estable |
+| Codex genera lógica de negocio incorrecta | Funciones SQL y `scheduling` revisadas línea a línea; tests escritos **antes** de la implementación (TDD) en estas áreas |
+| Incertidumbre de integración GAS (S4 del doc 01) | Spike de 1 día en S2 para confirmar modo de despliegue y cuotas |
+| Alcance creciente | `CODEX_IMPLEMENTATION_GUIDE.md`: lista explícita de "fuera de alcance" |
+| Dependencia de planes pagos (Cron, PITR) | Decidir plan antes de S9/S13 |
+| Cumplimiento legal tardío | Iniciar revisión legal en S7 (en paralelo) |
+
+## 7. Qué NO entra en el MVP (control de alcance)
+Pagos, WhatsApp, Google Calendar, multi‑sucursal, multi‑servicio por turno, onboarding self‑service, planes/suscripciones, dominios propios, lista de espera, reportes avanzados, notificaciones push, modo offline.
