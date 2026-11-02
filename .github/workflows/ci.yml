@@ -1,0 +1,50 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start local Supabase and apply migrations
+        run: npm run db:start > /dev/null
+      - run: npm run db:lint
+      - run: npm run db:test
+      - name: Provision restricted local login without printing secrets
+        run: npm run db:provision-local
+      - run: npm run test:integration
+      - run: npm run auth:configure-local
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Verify development hydration and authentication
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_DEV_SERVER: "1"
+      - name: Stop local Supabase
+        if: always()
+        run: npm run db:stop

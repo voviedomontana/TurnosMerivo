@@ -1,3 +1,6 @@
+> Consolidación 2026-10-31: doc 14 incorporado. Propuestas P-xx y gates en
+> [informe de consolidación](CONSOLIDATION_REPORT.md); esta edición no autoriza implementación.
+
 # 02 — Requisitos funcionales y reglas de negocio
 
 Convención: `RF-xx` requisito funcional, `RN-xx` regla de negocio. Prioridad: **M** = MVP, **D** = diferido.
@@ -8,7 +11,7 @@ Convención: `RF-xx` requisito funcional, `RN-xx` regla de negocio. Prioridad: *
 |----|-------|
 | RN-01 | Todo dato de negocio pertenece a exactamente un `business_id`. Ninguna operación cruza tenants. |
 | RN-02 | Todos los instantes se guardan en UTC (`timestamptz`). Los horarios laborales se guardan como hora local + zona del negocio y se resuelven a UTC al generar disponibilidad. |
-| RN-03 | Un profesional no puede tener dos reservas activas (`pending`, `confirmed`, `completed`) cuyos rangos ocupados se superpongan. Rango ocupado = `[starts_at, starts_at + duración + buffer)`. |
+| RN-03 | Un profesional no puede tener dos reservas activas (`pending`, `confirmed`, `completed`; inclusión histórica de `no_show` propuesta P-02, pendiente de aprobación antes de S3/S6) cuyos rangos ocupados se superpongan. Rango ocupado = `[starts_at, starts_at + duración + buffer)`. |
 | RN-04 | El final del **servicio** debe caer dentro de un intervalo laboral; el **buffer** posterior puede exceder el cierre pero no puede chocar con otra reserva o bloqueo. |
 | RN-05 | Un servicio no puede cruzar un descanso (los descansos son huecos entre intervalos laborales). |
 | RN-06 | Precio, duración, buffer y nombre del servicio se **copian** a la reserva al crearla (snapshot) y no cambian si el catálogo cambia. |
@@ -16,7 +19,7 @@ Convención: `RF-xx` requisito funcional, `RN-xx` regla de negocio. Prioridad: *
 | RN-08 | Los cambios de estado se registran en `appointment_events` (append‑only) y las acciones sensibles en `audit_logs`. |
 | RN-09 | Cambiar horarios laborales **no cancela** reservas existentes; el sistema informa conflictos y el admin decide. |
 | RN-10 | Anticipación mínima y ventana máxima aplican a clientes públicos; admin/barbero pueden saltearlas explícitamente (`override_policies=true`), quedando auditado. |
-| RN-11 | Reservar es posible sin cuenta. El cliente gestiona su reserva mediante un **token de gestión** de un solo uso por reserva (alta entropía, guardado hasheado). |
+| RN-11 | Reservar es posible sin cuenta. El cliente gestiona su reserva mediante un **token de gestión** por reserva, reutilizable hasta vencimiento o revocación (doc 08 §2); no es un token de un solo uso (alta entropía, guardado hasheado). |
 | RN-12 | Las operaciones de creación y cambio de estado son **idempotentes** mediante `Idempotency-Key`. |
 
 ## 2. Políticas configurables por negocio (`business_settings`)
@@ -73,7 +76,9 @@ stateDiagram-v2
 
 \* Barbero: sólo sobre reservas propias y según permisos del negocio.
 
-Al violar una transición: `409 INVALID_STATE_TRANSITION`.
+Al violar una transición: `409 INVALID_STATE_TRANSITION`. Toda integración de escritura requiere `user_token` de Modo A validado, scope y permiso del miembro vigente; `service_key` nunca escribe.
+
+**Ocupación histórica P-02**: doc 14 recomienda conservar el rango de `completed` y `no_show`, sin reutilización histórica arbitraria. Se propone incluir `no_show` en el predicado ocupante; falta aprobación de producto antes de S3/S6. Hasta entonces no implementar liberación por ausencia. Toda reversión revalida solapes bajo lock; no puede causar superposición.
 
 ## 4. Requisitos funcionales por módulo
 
@@ -147,6 +152,8 @@ Agenda del día, próximos turnos, ficha del cliente (nombre, teléfono, histori
 
 ## 6. Matriz de permisos (entidad × acción)
 
+Las columnas de integración no agregan endpoints de escritura al MVP: son permisos máximos, sujetos al catálogo del doc 05 y al Modo A validado. El registro de servicios y los vínculos siguen disponibles desde el sistema autenticado en Modo B.
+
 Leyenda: ✔ permitido · ◐ condicionado · ✖ denegado. "Propio" = reservas/agenda del profesional vinculado al usuario.
 
 | Entidad / acción | Superadmin* | Owner/Admin | Barbero | Cliente (token) | Integración servicio | Integración usuario |
@@ -165,8 +172,8 @@ Leyenda: ✔ permitido · ◐ condicionado · ✖ denegado. "Propio" = reservas/
 | Reserva: ver | ✔ | ✔ todas | ✔ propias | ✔ la suya | ✔ (lectura) | ◐ por rol |
 | Reserva: cancelar | ✔ | ✔ | ◐ propias | ◐ (política) | ✖ | ◐ por rol |
 | Reserva: reprogramar | ✔ | ✔ | ◐ propias | ◐ (política) | ✖ | ◐ por rol |
-| Reserva: confirmar | ✔ | ✔ | ✔ propias | ✖ | ◐ | ◐ |
-| Reserva: completar / ausente | ✔ | ✔ | ✔ propias | ✖ | ◐ (Modo B limitado) | ✔ propias/rol |
+| Reserva: confirmar | ✔ | ✔ | ✔ propias | ✖ | ✖ | ◐ (Modo A validado) |
+| Reserva: completar / ausente | ✔ | ✔ | ✔ propias | ✖ | ✖ | ◐ propias/rol (Modo A validado) |
 | Reserva: revertir completado/ausente | ✔ | ✔ | ✖ | ✖ | ✖ | ◐ (admin) |
 | Clientes: ver | ✔ | ✔ | ◐ (sólo con reservas propias; sin notas de otros) | ✖ (sólo sus datos) | ✔ (lectura limitada) | ◐ |
 | Clientes: crear/editar | ✔ | ✔ | ◐ (crear al agendar) | ✖ | ✖ | ◐ |

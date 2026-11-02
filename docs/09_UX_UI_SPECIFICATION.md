@@ -1,3 +1,6 @@
+> Consolidación 2026-10-31: doc 14 incorporado. Propuestas P-xx y gates en
+> [informe de consolidación](CONSOLIDATION_REPORT.md); esta edición no autoriza implementación.
+
 # 09 — Especificación UX/UI (mobile‑first)
 
 ## 1. Principios
@@ -5,7 +8,7 @@
 2. **Minimalismo funcional**: una acción principal por pantalla; sin cuentas ni formularios largos para el cliente.
 3. **Rapidez percibida**: skeletons, estados optimistas en el panel, prefetch de disponibilidad del día siguiente.
 4. **Accesibilidad**: WCAG 2.1 AA (contraste, foco visible, objetivos táctiles ≥ 44 px, labels, `aria-live` para errores de slot).
-5. **Marca**: tokens de diseño (colores, radio, tipografía) en CSS variables; logo y color primario por negocio (`branding`). Tema claro por defecto, modo oscuro opcional en paneles.
+5. **Marca**: tokens de diseño (colores, radio, tipografía) en CSS variables; logo y color primario por negocio (`branding`). Tema Merivo oscuro por defecto, autorizado por el usuario el 2026-10-31: negro/carbón, rojo rubí, blanco/gris y firma dorada. Ver [guía de marca](BRAND_GUIDE.md); conservar logo original y tokens globales en todas las pantallas futuras.
 6. Idioma es‑AR, voseo en mensajes ("Elegí un horario"), formato de fecha `dd/MM` y hora 24 h; moneda `$ 12.000`.
 
 ## 2. Mapa de navegación
@@ -106,14 +109,16 @@ Los roles ven menús distintos: Barbero sólo *Mi agenda, Mis clientes, Mi dispo
 ## 5. Panel del barbero (`Mi agenda`)
 - Vista por defecto: **hoy**, lista cronológica de turnos con hora, cliente, servicio, estado; el próximo turno destacado.
 - Tarjeta de cliente: nombre, teléfono (acción llamar/WhatsApp), visitas previas, notas relevantes, observaciones del turno.
-- Acciones de un toque: **Asistió/Completar**, **No vino**, **Cancelar** (si permitido). Confirmaciones con *undo* de 5 s para evitar errores.
-- Indicador de turno "Registrar servicio" si hay integración activa (abre GAS o deep‑link).
+- Acciones de un toque: **Asistió/Completar**, **No vino**, **Cancelar** (si permitido). Confirmación previa o envío diferido cancelable de 5 s para evitar errores; no prometer undo posterior a una transición confirmada (revertir requiere admin, motivo, versión y validación de solapes).
+- Indicador "Registrar servicio" abre GAS/deep-link sin tokens; en Modo B completar y vincular se hacen en TurnosMerivo autenticado. La UI distingue vínculo pendiente de confirmado (doc 07 §5).
 
 ## 6. Componentes reutilizables (shadcn/ui + propios)
 `AppShell` (navegación inferior en móvil / lateral en desktop), `PageHeader`, `DateStrip`, `SlotGrid`, `ServiceCard`, `StaffPicker`, `AppointmentCard`, `AppointmentSheet` (bottom sheet), `StatusBadge`, `AgendaDay`/`AgendaWeek`, `WeeklyHoursEditor`, `TimeRangeInput`, `CustomerSearch`, `PhoneInput (AR)`, `ConfirmDialog`, `EmptyState`, `Toast`, `DataTable` (con paginación por cursor), `PermissionGate` (oculta UI según `can()`, **no** reemplaza validación servidor), `FormField` (react‑hook‑form + Zod), `Skeleton*`.
 
 ## 7. Estados y manejo de errores en UI
 Vacío ("Aún no hay turnos hoy"), cargando (skeleton), error recuperable (reintentar), conflicto `SLOT_TAKEN` (mostrar alternativas), sin conexión (banner; sólo lectura), permisos (pantalla 403 clara), sesión vencida (re‑login conservando destino).
+
+Ante 412 recargar la versión y mostrar el cambio concurrente; ante 428 corregir el envío de If-Match. No reintentar ciegamente con nueva versión una intención que el usuario no revisó.
 
 ## 8. PWA
 **Recomendación**: PWA **instalable** para panel de barberos/admin (manifest, íconos, `display: standalone`, tema), service worker mínimo (caché de shell y assets, **sin** caché de datos sensibles ni escrituras offline). Portal público: manifest simple + metaetiquetas, sin service worker complejo.

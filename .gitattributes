@@ -1,0 +1,2 @@
+# Applied migrations are checksum-pinned; preserve their original bytes on every OS.
+supabase/migrations/*.sql -text whitespace=cr-at-eol

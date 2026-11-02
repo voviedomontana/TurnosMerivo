@@ -1,3 +1,8 @@
+> Consolidación 2026-10-31: doc 14 incorporado. Propuestas P-xx y gates en
+> [informe de consolidación](CONSOLIDATION_REPORT.md); esta edición no autoriza implementación.
+
+> **Actualización de seguridad:** consultar `14_CORRECCIONES_CRITICAS.md` antes de implementar. Si existe contradicción, prevalecen esas correcciones.
+
 # 10 — Roadmap de implementación
 
 ## 1. Supuestos de estimación
@@ -6,6 +11,14 @@
 - Complejidad: B (baja), M (media), A (alta). Riesgo: B/M/A.
 - Total MVP estimado: **14–17 semanas calendario** (≈ 60–75 dp). Con dedicación parcial multiplicar proporcionalmente.
 - Los sprints son **secuenciales salvo indicación**; cada uno termina con *demo verificable* y *PR mergeado con CI verde*.
+
+## 1.1 Estado y puerta previa
+
+S0 implementado; infraestructura local preparada. Este roadmap describe trabajo
+futuro, no certifica CI remoto, despliegues o tablas existentes. La consolidación es
+sólo Markdown. P-01/P-07 y la dependencia mínima de membresías fueron aprobadas explícitamente
+en ADR-022; ver SPRINT_1_REPORT.md para la entrega local. Las pruebas de doc 14 son gates
+para implementar, no se declaran ejecutadas por editar documentación.
 
 ## 2. Definición de terminado (global)
 1. Código en `main` vía PR revisado; CI verde (lint, tipos, unit, integración, pgTAP).
@@ -45,21 +58,22 @@
 - **Tareas**: scaffolding; estructura `modules/`; regla ESLint de import restringido; pipeline CI; `GET /api/health`.
 - **Tablas/Endpoints**: ninguna / `GET /api/health`.
 - **Pruebas**: smoke e2e, unit de utilidades.
-- **Aceptación**: `pnpm dev`, `pnpm test`, `pnpm lint` funcionan; despliegue *preview* por PR; Supabase local levanta con `supabase start`.
+- **Aceptación local entregada**: comandos npm y landing sin Supabase. Infraestructura CLI preparada posteriormente. Preview, Sentry, logger y health del alcance original no se consideran entregados; quedan como tareas operativas autorizables antes de piloto, no se agregan retroactivamente a S0.
 
 ### S1 — Arquitectura multi‑tenant
 - **Objetivo**: contexto de tenant y esquema base.
-- **Alcance**: tablas `businesses`, `business_settings`; resolvedor de tenant (slug / ruta / token); helpers `app.*`; plantilla de migración con RLS; seed `create_business()`; convención de FKs compuestas.
-- **Dependencias**: S0.
+- **Alcance**: businesses/settings; contexto y resolución por slug y selector de ruta validado donde exista identidad. El punto de extensión por token queda documentado; la integración real espera S10. Helpers mínimos y grants aprobados P-01, FKs, RLS y fixtures de dos negocios; alta del negocio mediante operación de plataforma revisada, sin self-service.
+- **Dependencias**: S0 e infraestructura local. **P-01 aprobada (ADR-022)**: adelantar sólo la base de identidad/membresía y fixtures SQL sintéticos necesarios; mantener invitaciones, MFA, UI y gestión de roles en S2. La alternativa de posponer membresías a S2 no fue elegida. La aprobación no incluye login, invitaciones, MFA, UI o gestión de roles.
 - **Tareas**: migraciones, `TenantContext`, middleware de resolución, tests pgTAP de patrón RLS.
 - **Endpoints**: `GET /public/{slug}`.
 - **Pruebas**: aislamiento básico entre 2 negocios seed; slug inválido/reservado.
-- **Aceptación**: dos negocios seed no se ven entre sí en SQL con distintos usuarios; `GET /public/{slug}` correcto y 404 para inexistente.
+- **Aceptación**: conforme a alternativa P-01 aprobada, aislamiento comprobado con actores de prueba y roles sin bypass; acceso público devuelve sólo campos permitidos, sin SELECT anon. GET público limitado a datos base disponibles en S1, sin prometer catálogo/agenda de otros sprints. No cerrar S1 sin evidenciar la aceptación acordada.
 
 ### S2 — Autenticación y roles
+- **Estado local**: autorizado posteriormente por el usuario; entrega, pruebas y límites en SPRINT_2_REPORT.md. No implica despliegue, PR ni comienzo de S3.
 - **Objetivo**: login seguro y RBAC por negocio.
-- **Alcance**: Supabase Auth (SSR), `users`, `business_members`, `platform_admins`, `app.manage_member()`, invitaciones, MFA TOTP para owner/admin, `can()`, selector de negocio, layout autenticado.
-- **Tablas**: `users`, `business_members`, `platform_admins`, `audit_logs` (base).
+- **Alcance**: Supabase Auth (SSR), `users`, `business_members`, `platform_admins`, operación autorizada de membresía (doc 04 §4), invitaciones, MFA TOTP para owner/admin, `can()`, selector de negocio, layout autenticado.
+- **Tablas**: users/business_members si no se adelantó su base en P-01, platform_admins y audit_logs base. Reutilizar lo aprobado/aplicado en S1; no recrear ni editar migraciones aplicadas.
 - **Endpoints**: `GET/POST /members…`, `/me`.
 - **Pruebas**: matriz de permisos (unit), escalamiento de privilegios (X‑05, X‑06), pgTAP de RLS de membresía.
 - **Aceptación**: owner invita admin y barbero; barbero no puede cambiar roles; usuario en 2 negocios cambia de contexto; último owner no se puede quitar.
@@ -67,7 +81,7 @@
 ### S3 — Modelo de datos completo
 - **Objetivo**: esquema final del MVP con integridad.
 - **Alcance**: todas las tablas del doc 04 (`staff_members`, `services`, `staff_services`, `working_hours`, `schedule_exceptions`, `time_blocks`, `customers`, `appointments` con `EXCLUDE`, `appointment_events`, `notifications`, `integration_credentials`, `external_id_mappings`, `idempotency_keys`), triggers (`touch_updated_at`, append‑only, overlap de horarios), privilegios, RLS, tipos TS generados.
-- **Pruebas**: pgTAP: constraints, FKs compuestas, EXCLUDE (solapes, contiguidad), privilegios (X‑10), append‑only.
+- **Pruebas**: pgTAP de constraints, igualdad temporal y snapshots, FKs, EXCLUDE y ocupación histórica P-02 aprobada, grants y catálogo de definer (X-01…X-19), append-only. No implementar el predicado histórico propuesto hasta aprobación de producto.
 - **Aceptación**: suite pgTAP verde; `supabase db reset` reproduce el esquema; intento de cruzar tenants falla por FK.
 
 ### S4 — Profesionales y servicios
@@ -80,14 +94,14 @@
 ### S5 — Horarios y disponibilidad
 - **Objetivo**: calcular slots correctamente (cálculo informativo).
 - **Alcance**: `working_hours` (vigencias, múltiples intervalos), `schedule_exceptions`, `time_blocks`, UI del editor de horarios, módulo puro `scheduling` (`computeSlots`), `GET availability` (público y privado), caché corto.
-- **Dependencias**: S3, S4.
+- **Dependencias**: S3, S4 y aprobación P-03 del protocolo común de locks y P-06 de versiones de recursos globales, antes de escribir horarios/bloqueos.
 - **Pruebas**: unit exhaustivos + property‑based (fast‑check) + casos DST con zona de prueba (p. ej. `America/New_York`), escenarios B‑02…B‑23 (parte de cálculo).
 - **Aceptación**: slots correctos con descansos, feriados, vacaciones, vigencias y buffers; p95 < 600 ms con datos de 1 negocio (10 profesionales, 60 días).
 
 ### S6 — Motor de reservas
 - **Objetivo**: garantía transaccional.
 - **Alcance**: `app.create_appointment`, `reschedule`, `transition`, `cancel`; asignación "cualquier profesional"; snapshots; eventos; outbox (encolado); idempotencia; contadores de cliente; normalización de teléfono y match de clientes; endpoints de reservas y clientes.
-- **Pruebas**: concurrencia (B‑01, B‑11 con 50+ hilos), todas las transiciones, idempotencia, X‑03.
+- **Pruebas**: concurrencia real de reservas/reprogramación cruzada, horarios/excepciones/bloqueos globales, expiración/worker, todos los estados incluidos históricos, fallos de candidato, 428/412/409, idempotencia y rollback de outbox/auditoría. Cerrar P-02/P-03/P-06 antes de implementar.
 - **Aceptación**: 0 dobles reservas en la prueba de estrés; reprogramación atómica; estados inválidos rechazados con `409`.
 
 ### S7 — Portal público
@@ -107,18 +121,18 @@
 - **Aceptación**: emails de confirmación/cancelación/reprogramación/recordatorio correctos; ningún duplicado con 2 workers concurrentes; `dead` genera alerta.
 
 ### S10 — API de integración
-- **Alcance**: credenciales (service/user), scopes, rotación/revocación, `/integrations/me`, `/integrations/changes`, mapeos, vínculos externos, auditoría de integración, rate limit por token, documentación OpenAPI.
-- **Pruebas**: X‑07, X‑08; cursor y solapamiento; tombstones; Modo B con restricciones.
-- **Aceptación**: token revocado deja de funcionar ≤ 30 s; `changes` entrega todo cambio sin pérdidas en prueba de carga con commits concurrentes.
+- **Alcance MVP**: credenciales, scopes de sólo lectura compartida, revocación sin caché, me, listados/barridos paginados y reconciliación; mapeos/vínculos con identidad real, auditoría, límites y OpenAPI. Cerrar P-04/P-05. changes queda reservado: sólo habilitable si existe diseño de publicador y pruebas de completitud; no es requisito para entregar el fallback MVP seguro.
+- **Pruebas**: scopes/tenant, denegación de toda escritura Modo B, revocación, barridos interrumpidos, tombstones, cambios históricos y versiones. Si se propone feed, pruebas de doc 11 §12 antes de habilitarlo.
+- **Aceptación**: token revocado falla en la siguiente solicitud; reconciliación converge tras barrido completo/reintentos sin duplicados ni borrados por lotes incompletos. No afirmar garantía incremental con un filtro updated_since o secuencia.
 
 ### S11 — Integración con Google Apps Script
-- **Alcance**: librería `TurnosClient` y `TurnosSync` (GAS), vistas de agenda en la app actual, acciones de estado, flujo precargado de Registro de Servicios, columnas `ID`/`ID Turno`, `Turnos_RO`, reconciliación nocturna, import inicial de clientes con *dry run*, vinculación manual de barberos/servicios.
+- **Alcance**: librería `TurnosClient` y `TurnosSync` (GAS), vistas de agenda en la app actual (sólo en este sprint), acciones desde TurnosMerivo autenticado en Modo B o Modo A validado P-08, flujo precargado de Registro de Servicios, columnas `ID`/`ID Turno`, `Turnos_RO`, reconciliación nocturna, import inicial de clientes con *dry run*, vinculación manual de barberos/servicios.
 - **Dependencias**: S10; resolver preguntas S3/S4 del doc 01.
 - **Pruebas**: contra *staging* con hoja de pruebas; doble clic/duplicados; fallo parcial; cursor perdido; caída de API.
-- **Aceptación**: flujo "reserva → completar → registro precargado → vínculo" sin duplicados; dashboards leen `Turnos_RO`; con la API caída la app GAS existente sigue funcionando para el resto de módulos.
+- **Aceptación**: flujo reserva → completar autenticado → registro → vínculo autenticado/conciliado, sin duplicados; Modo B no escribe en TurnosMerivo; dashboards usan Turnos_RO y muestran último éxito. GAS conserva sus módulos con API caída. No prometer transacción distribuida ni habilitar Modo A sólo por UserProperties.
 
 ### S12 — Seguridad y concurrencia
-- **Alcance**: suite de aislamiento (X‑01…X‑14), carga (k6) de reservas simultáneas y disponibilidad, revisión OWASP ASVS (checklist), escaneo de dependencias/secretos, prueba de restauración de backup, ajuste de límites.
+- **Alcance**: suite de aislamiento (X-01…X-19), carga (k6) de reservas simultáneas y disponibilidad, revisión OWASP ASVS (checklist), escaneo de dependencias/secretos, prueba de restauración de backup, ajuste de límites.
 - **Aceptación**: checklist de doc 08 §10 completo salvo revisión legal; 0 hallazgos críticos/altos abiertos.
 
 ### S13 — Despliegue productivo y piloto

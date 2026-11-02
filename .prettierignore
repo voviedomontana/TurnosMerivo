@@ -1,0 +1,10 @@
+node_modules
+.next
+package-lock.json
+next-env.d.ts
+coverage
+playwright-report
+test-results
+docs/0*.md
+docs/1*.md
+docs/CODEX_IMPLEMENTATION_GUIDE.md

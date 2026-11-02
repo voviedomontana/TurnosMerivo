@@ -1,3 +1,8 @@
+> Consolidación 2026-10-31: doc 14 incorporado. Propuestas P-xx y gates en
+> [informe de consolidación](CONSOLIDATION_REPORT.md); esta edición no autoriza implementación.
+
+> **Actualización de seguridad:** consultar `14_CORRECCIONES_CRITICAS.md` antes de implementar. Si existe contradicción, prevalecen esas correcciones.
+
 # 03 — Arquitectura del sistema
 
 ## 1. Evaluación del stack propuesto
@@ -20,9 +25,9 @@
 **Costo/complejidad de los agregados**: bajos; todos tienen tier gratuito/económico (verificar precios vigentes). **No se agregan**: colas (SQS/Rabbit), Redis propio, microservicios, GraphQL, ORM pesado.
 
 ### Acceso a datos: decisión
-- **Consultas/escrituras simples del panel** → cliente Supabase/`postgres` con el **JWT del usuario** (RLS aplica).
-- **Operaciones críticas** (crear/reprogramar/cancelar reserva, fusionar clientes, gestionar miembros) → **funciones SQL** `SECURITY DEFINER` con `search_path=''` que reciben `business_id` + actor y validan permisos adentro.
-- **Service role** (salta RLS) sólo en tres módulos aislados: `public-booking`, `integrations`, `workers`. Cada uno **debe** filtrar por `business_id` derivado de una fuente confiable (slug resuelto, token de integración, fila de la cola). Prohibido importarlo desde otros módulos (regla ESLint `no-restricted-imports`).
+- **Lecturas del panel** → cliente Supabase con JWT del usuario verificado (RLS aplica). El JWT no se transmite mediante una conexión arbitraria como `postgres`. Las escrituras pasan por operaciones autorizadas de BD; el mapa exacto de grants/DML de configuración se aprueba antes de la primera migración (P-01, doc 04 §4).
+- **Operaciones críticas** (crear/reprogramar/cancelar reserva, fusionar clientes, gestionar miembros) → **funciones SQL** `SECURITY DEFINER` con `search_path=''` que reciben `business_id` como identificador de recurso, pero **nunca aceptan la identidad del actor como prueba de autorización**. La identidad se obtiene de `auth.uid()` en sesiones verificadas; para integraciones y workers, la API valida credenciales y emplea un rol técnico restringido y operaciones separadas que verifican dentro de BD la credencial/capacidad y el tenant, sin aceptar actor arbitrario del backend. Prohibido confiar en cabeceras `X-Actor-*` arbitrarias.
+- **Servidor sin sesión**: rol técnico restringido (propuesta `app_server`, P-01), sin acceso directo a tablas de negocio, sólo operaciones internas que verifican credencial/capacidad y tenant en BD. `service_role` no se utiliza como credencial rutinaria de datos; queda separado para Auth Admin/Storage cuando corresponda. Nunca llega al navegador ni al HTML/GAS. No se crean roles o conexiones en esta consolidación.
 - Query builder tipado (Kysely) o `supabase-js` con tipos generados; **sin ORM** que oculte SQL. El SQL de migraciones es la fuente del esquema.
 
 ## 2. Vista de contexto
@@ -76,7 +81,9 @@ flowchart LR
 /docs             # estos documentos
 ```
 
-Reglas: dependencias sólo "hacia abajo" (`app → modules → lib`); `scheduling` es **puro** (sin I/O) para poder testearlo exhaustivamente; un módulo no accede a tablas de otro: usa su API pública (`index.ts`).
+La estructura anterior expresa dominios lógicos. El Sprint 0 existente usa `components/ui` y módulos `businesses/staff/services/availability/appointments`. No renombrarlos en esta tarea; el mapeo físico se aprueba en P-07 antes de añadir lógica.
+
+Reglas: dependencias sólo "hacia abajo" (`app → modules → lib`); el cálculo de disponibilidad (`scheduling` lógico / `availability` físico actual) es **puro** (sin I/O) para poder testearlo exhaustivamente; un módulo no accede a tablas de otro: usa su API pública (`index.ts`).
 
 ## 4. Flujos clave
 
@@ -92,8 +99,8 @@ sequenceDiagram
   API-->>C: slots (calculados por módulo scheduling)
   C->>API: POST /public/{slug}/appointments (Idempotency-Key, Turnstile)
   API->>API: rate limit, validación, resolver tenant por slug
-  API->>DB: SELECT app.create_appointment(...)
-  DB->>DB: lock staff, validar, INSERT (EXCLUDE), evento, outbox
+  API->>DB: operación interna public_create_appointment(slug, datos validados)
+  DB->>DB: locks ordenados de negocio/profesionales, validar, INSERT (EXCLUDE), evento, outbox e idempotencia
   alt slot tomado
     DB-->>API: SQLSTATE 23P01 -> SLOT_TAKEN
     API-->>C: 409 + sugerencias
@@ -153,6 +160,9 @@ Vercel Pro (~US$20/mes por miembro), Supabase Pro (~US$25/mes + PITR opcional), 
 | Admin global | Tabla `platform_admins`, audit con `actor_type` | Consola de plataforma |
 
 ## 8. Limitaciones conocidas y cuándo revisar la arquitectura
+
+- Todas las mutaciones de agenda siguen el mismo protocolo de locks (doc 06 §4.0), incluso excepciones/bloqueos de negocio, expiraciones, imports y reversiones. No se autoriza una ruta de escritura que lo omita.
+- GAS Modo B sólo lee. Reportes MVP: barridos completos y reconciliación; `/integrations/changes` queda reservado hasta diseño y pruebas (doc 05 §4). No confundir el outbox de notificaciones con un feed ordenado por commit.
 - Serialización por profesional (lock de fila) es suficiente hasta miles de reservas/hora por tenant. Si aparece contención: reducir el alcance del lock o usar advisory locks por (profesional, día).
 - Si el número de tenants supera ~cientos con cargas desparejas: evaluar particionado de `appointments` por `business_id` hash o por mes.
 - Si Supabase deja de ser adecuado: el esquema es Postgres estándar; las únicas dependencias propietarias son Auth y `auth.uid()` (aisladas en `app.current_user_id()`).

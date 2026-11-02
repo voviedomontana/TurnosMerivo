@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es-AR">
+  <body
+    style="
+      background: #101113;
+      color: #f5f5f4;
+      font-family: Arial, sans-serif;
+      padding: 32px;
+    "
+  >
+    <h1 style="color: #c89c6b">MERIVO</h1>
+    <h2>Activá tu cuenta</h2>
+    <p>Un administrador te invitó a crear tu acceso a TurnosMerivo.</p>
+    <p>
+      Abrí
+      <a style="color: #f0747f" href="{{ .SiteURL }}/auth/alta"
+        >Activar mi cuenta</a
+      >
+      e ingresá este código:
+    </p>
+    <p style="font-size: 28px; letter-spacing: 6px">{{ .Token }}</p>
+    <p>
+      El código vence en una hora y puede usarse una sola vez. Si no esperabas
+      este mensaje, podés ignorarlo.
+    </p>
+    <p>
+      Después de activar tu cuenta, definí tu contraseña y abrí el enlace de
+      invitación al negocio que te compartió el administrador.
+    </p>
+  </body>
+</html>

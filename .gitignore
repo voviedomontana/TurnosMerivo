@@ -1,0 +1,24 @@
+node_modules/
+.next/
+.vercel/
+out/
+coverage/
+playwright-report/
+test-results/
+.env*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+*.log
+# Supabase local state, credentials, exports and signing material
+.supabase/
+supabase/.temp/
+supabase/.branches/
+supabase/backups/
+supabase/signing_keys.json
+supabase/**/*.pem
+supabase/**/*.key
+supabase/**/*.p12
+supabase/**/*.pfx
+supabase/**/*.dump

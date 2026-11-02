@@ -1,3 +1,6 @@
+> Consolidación 2026-10-31: doc 14 incorporado. Propuestas P-xx y gates en
+> [informe de consolidación](CONSOLIDATION_REPORT.md); esta edición no autoriza implementación.
+
 # 12 — Despliegue y operaciones
 
 ## 1. Entornos
@@ -30,7 +33,8 @@ flowchart LR
 
 **Orden crítico**: aplicar migraciones **antes** del deploy de código; las migraciones deben ser **compatibles hacia atrás** (patrón *expand → migrate → contract*): el código anterior debe seguir funcionando con el esquema nuevo. Nunca eliminar columnas en el mismo release que deja de usarlas.
 - Migraciones: `supabase/migrations/*.sql`, aplicadas con `supabase db push` desde CI con credenciales de CI (no personales). Prohibido editar migraciones ya aplicadas; se crea una nueva.
-- Rollback: preferir *roll‑forward* (migración correctiva). Para cambios riesgosos, tomar snapshot/PITR marker antes de aplicar.
+- Recuperación: preferir roll-forward con migración correctiva; no ejecutar down destructivo automáticamente. Antes de cambios riesgosos tomar backup/marker PITR y verificar restauración. Rollback de código sólo si el esquema sigue compatible; fallos de datos requieren restauración probada o corrección auditada, nunca borrar tenants/membresías para deshacer una entrega.
+- Primero aplicar/reconstruir en Supabase local con fixtures sintéticos y pruebas de privilegios/RLS; luego staging. Documentar destino, precondiciones, impacto y plan de recuperación de cada migración. Nada de este flujo se ejecuta durante la consolidación documental.
 - Feature flags simples (`business_settings` o variables de entorno) para activar funcionalidades gradualmente.
 
 ## 3. Variables de entorno
@@ -38,9 +42,9 @@ flowchart LR
 | Variable | Alcance | Descripción |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | cliente+servidor | URL del proyecto |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | cliente+servidor | Clave anónima (sin acceso a tablas) |
-| `SUPABASE_SERVICE_ROLE_KEY` | **sólo servidor** | Salta RLS; módulos `public-booking`, `integrations`, `workers` |
-| `DATABASE_URL` | servidor | Pooler (modo transacción) para funciones serverless |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | cliente+servidor | Clave pública actual del contrato S0; no concede permisos de negocio por sí sola |
+| `SUPABASE_SERVICE_ROLE_KEY` | **sólo backend privilegiado** | Auth Admin/Storage cuando corresponda, nunca cliente/GAS/HTML ni credencial rutinaria de datos |
+| `DATABASE_URL_APP_SERVER` (propuesta P-01) | servidor | Rol técnico restringido para operaciones internas, sin acceso directo a tablas; aprobar grants/propietario antes de configurar |
 | `APP_BASE_URL` | ambos | URL pública (enlaces en emails) |
 | `INTERNAL_JOBS_SECRET` | servidor | Autentica llamadas del cron a `/api/internal/jobs/*` |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | cliente / servidor | Anti‑bot |
@@ -50,7 +54,7 @@ flowchart LR
 | `INTEGRATION_TOKEN_PEPPER` (opcional) | servidor | Pepper adicional para hash de tokens |
 | `FEATURE_*` | servidor | Flags |
 
-Validación al arranque con Zod: la app **no inicia** si falta una variable obligatoria. `.env.example` sin valores reales en el repo.
+Validación con Zod por capacidad habilitada. S0 y preparación actual arrancan sin Supabase: las dos variables públicas pueden estar vacías; una configuración parcial/inválida falla. No hacer obligatorios secretos de sprints futuros. `.env.example` sin valores reales. Cookie/sesión sólo al implementar S2; no activar Auth en esta tarea.
 
 ## 4. Jobs y programación
 - `pg_cron` + `pg_net` → `POST /api/internal/jobs/notifications-dispatch` (1 min), `…/expire-pending` (1 min), `…/cleanup` (diario) con `Authorization: Bearer $INTERNAL_JOBS_SECRET`.
@@ -106,3 +110,57 @@ Vercel Pro ≈ US$20 por asiento; Supabase Pro ≈ US$25 + PITR (complemento var
 - [ ] Suite de seguridad/concurrencia verde en staging con la misma versión.
 - [ ] Textos legales publicados (privacidad, términos).
 - [ ] Plan de rollback y contacto de guardia definidos.
+
+## 12. Desarrollo local existente y migraciones futuras
+
+Node 24, npm y Docker con motor Linux. CLI fijada en package-lock, sin login/link
+remoto necesario. No repetir init --force sobre config existente.
+
+```sh
+npm ci
+npm run db:start
+npm run db:status
+npm run dev
+# Parada normal conserva datos locales:
+npm run db:stop
+```
+
+Config actual: PostgreSQL major 17 (se comprobó 17.11 en la sesión anterior),
+API 54321, PostgreSQL 54322, shadow 54320 y Studio 54323. Auth/registro, seeds,
+Storage, Realtime y demás servicios no usados están deshabilitados. Public es el
+único esquema expuesto y auto_expose_new_tables=false; no sustituye RLS ni grants.
+Estos hechos describen la preparación previa, no una nueva ejecución en esta tarea.
+
+La landing no necesita .env.local ni conexión. Para futuras conexiones copiar
+.env.example sólo si no existe .env.local, y completar ambas variables públicas
+con valores de desarrollo. No volcar status -o env a Git: contiene credenciales.
+No configurar app_server/service_role antes del sprint y revisión correspondientes.
+
+Después de aprobar el modelo (estos comandos **no se ejecutan ahora**):
+
+```sh
+npm run supabase -- migration new init_tenancy
+# Escribir SQL y tests revisados; luego aplicar sólo local:
+npm run db:migrate
+npm run supabase -- migration list --local
+npm run supabase -- test db
+# Sólo en base local descartable; elimina datos:
+npm run db:reset
+```
+
+Los scripts migrate/reset usan --local. Nunca cambiar a --linked/--db-url ni hacer
+push remoto implícitamente. db:reset --no-seed no es rollback de producción. Crear
+fixtures/seed revisados sólo con autorización del esquema; no editar migraciones
+aplicadas. La carpeta migrations actual se conserva vacía durante esta consolidación.
+
+## Acceso local del Sprint 2
+
+Auth y Mailpit local están habilitados. Seguir SPRINT_2_REPORT.md para configuración,
+bootstrap inicial, activación por código, MFA y pruebas. SUPABASE_AUTH_ADMIN_KEY es
+privada, sólo para Auth Admin; auth:configure-local la obtiene sin imprimir claves y
+escribe exclusivamente .env.local ignorado. Mantener DATABASE_URL_APP_SERVER
+restringida; no reemplazarla por una conexión privilegiada. Una modificación de
+config.toml exige stop/start conservando volúmenes; no implica db:reset. CLI start/status
+pueden imprimir credenciales: no guardar su salida completa en logs ni Git.
+Mailpit http://127.0.0.1:54324 captura los mensajes sin enviarlos a Internet. Antes de
+producción configurar SMTP, site_url, HTTPS, controles operativos y recuperación MFA.

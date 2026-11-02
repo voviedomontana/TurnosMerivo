@@ -1,6 +1,9 @@
+> Consolidación 2026-10-31: doc 14 incorporado. Propuestas P-xx y gates en
+> [informe de consolidación](CONSOLIDATION_REPORT.md); esta edición no autoriza implementación.
+
 # 13 — Registro de decisiones arquitectónicas (ADR)
 
-Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto futuro**. Estado: *Propuesta* hasta que se acepte explícitamente.
+Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto futuro**. Estado: consolidación técnica del doc 14 solicitada por el usuario, sin autorización de implementación/despliegue. Las recomendaciones no decididas conservan estado **Propuesta P-xx** en CONSOLIDATION_REPORT.md; la consolidación no fabrica aprobación de producto.
 
 ---
 
@@ -19,7 +22,7 @@ Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto fut
 - **Impacto futuro**: se puede migrar tenants grandes a BD dedicada exportando por `business_id`; particionado posible.
 
 ## ADR-003 — Prevención de doble reserva con `EXCLUDE USING gist` + función transaccional
-- **Decisión**: restricción de exclusión sobre `(staff_member_id, tstzrange(starts_at, blocked_until,'[)'))` para estados ocupantes; lock de fila del profesional en la función para validar horarios/bloqueos sin carreras.
+- **Decisión**: restricción de exclusión sobre `(staff_member_id, tstzrange(starts_at, blocked_until,'[)'))` para estados ocupantes; todas las escrituras siguen locks comunes de negocio/profesionales, orden determinista y revalidación (doc 06 §4.0). P-02 cierra ocupación histórica y P-03 protocolo concreto antes de implementación.
 - **Justificación**: garantía en el motor de datos, independiente del cliente; correcta bajo concurrencia sin `SERIALIZABLE`.
 - **Alternativas**: (a) validar sólo en aplicación — carreras; (b) `SERIALIZABLE` con reintentos — más complejo y costoso; (c) tabla de slots pre‑generados con UNIQUE — rígida ante cambios de duración/horarios; (d) bloqueos advisory — ok como complemento, no sustituye el constraint.
 - **Riesgos**: `blocked_until` debe calcularse correctamente (almacenado, no generado, por volatilidad de `timestamptz + interval`); bloqueos (`time_blocks`) no están cubiertos por el constraint y dependen del lock + función.
@@ -29,7 +32,7 @@ Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto fut
 - **Decisión**: revocar `INSERT/UPDATE/DELETE` a `anon` y `authenticated`; operaciones vía funciones `SECURITY DEFINER` (`search_path=''`) que verifican actor y tenant.
 - **Justificación**: un único camino que aplica reglas (horarios, políticas, snapshot, eventos, outbox); evita bypass desde PostgREST.
 - **Alternativas**: lógica sólo en TypeScript (más fácil de depurar, pero evitable desde otras rutas); triggers (invisibles, difíciles de testear).
-- **Riesgos**: lógica de negocio en SQL → curva de mantenimiento; riesgo de `SECURITY DEFINER` mal escrito (escalamiento). Mitigación: revisión, tests pgTAP, actor derivado de `auth.uid()`/contexto del servidor.
+- **Riesgos**: lógica de negocio en SQL → curva de mantenimiento; riesgo de `SECURITY DEFINER` mal escrito (escalamiento). Mitigación: revisión, tests pgTAP, actor derivado de auth.uid() o de credencial/capacidad verificada dentro de la operación de BD (ADR-019).
 - **Impacto futuro**: portabilidad a otro Postgres gestionado conserva la lógica.
 
 ## ADR-005 — Identificación de clientes por teléfono E.164; Instagram como atributo y mapeo
@@ -45,14 +48,14 @@ Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto fut
 - **Alternativas**: crear nueva + cancelar vieja (dos filas, ventana de inconsistencia, métricas inflan cancelaciones).
 - **Riesgos**: analítica de "cuántas reprogramaciones" depende de eventos. **Impacto**: ninguno relevante.
 
-## ADR-007 — Integración GAS híbrida (agenda bajo demanda + sincronización incremental de reportes)
-- **Decisión**: ver doc 07 §1. Sincronización unidireccional Postgres→Sheets para reservas; GAS ejecuta comandos vía API.
+## ADR-007 — GAS híbrido: agenda bajo demanda y reconciliación MVP
+- **Decisión revisada (14.D/E)**: ver doc 07 §1/§6. Barridos completos paginados y reconciliación eventual para KPIs; feed seguro sólo tras pruebas. Réplica unidireccional Postgres→Sheets para reservas; Modo B GAS sólo lee; comandos desde TurnosMerivo autenticado o Modo A validado.
 - **Justificación**: latencia real donde importa; reportes robustos ante caídas; sin sobrescrituras.
 - **Alternativas**: sólo on‑demand (reportes lentos y caros en cuota); sólo sync (agenda desfasada); doble escritura bidireccional (conflictos).
-- **Riesgos**: cuotas de `UrlFetchApp`, desfase en reportes (≤ 15 min). **Impacto**: la hoja `Turnos_RO` es descartable y reconstruible.
+- **Riesgos**: cuotas de `UrlFetchApp`, desfase en reportes (objetivo periódico, sin garantía de 15 min ante fallos). **Impacto**: la hoja `Turnos_RO` es descartable y reconstruible.
 
 ## ADR-008 — Credenciales de integración: `service_key` + `user_token`, con modo degradado
-- **Decisión**: tokens aleatorios de 256 bits (hash SHA‑256), scopes, expiración, rotación; token por usuario cuando GAS permita identidad individual; Modo B con restricciones y actor asertado no verificado.
+- **Decisión**: tokens aleatorios de 256 bits (hash SHA‑256), scopes, expiración, rotación; token por usuario cuando GAS permita identidad individual; Modo B estrictamente sólo lectura. Actor asertado sólo metadato; Modo A requiere prueba del operador real y aislamiento de tokens, no basta UserProperties. Revocación en cada solicitud sin caché de autorización.
 - **Justificación**: una credencial compartida no prueba identidad; se limita el daño y se mejora cuando es posible.
 - **Alternativas**: OAuth 2.0 / Google ID token (verificar identidad Google del usuario desde GAS con `ScriptApp.getIdentityToken()` si el manifiesto lo permite — **evaluar en spike**, mejora el Modo B); JWT firmados por el servidor; mTLS (no viable en GAS).
 - **Riesgos**: filtración de token en hoja/log; usuario pega token en lugar equivocado.
@@ -85,7 +88,7 @@ Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto fut
 - **Impacto**: activar OTP por negocio con un flag cuando sea necesario.
 
 ## ADR-013 — Roles leídos de la BD, no de claims del JWT
-- **Decisión**: membresía y rol se consultan por request (con caché corto en servidor); no se usan *custom claims* para autorización.
+- **Decisión**: membresía y rol se verifican en cada operación autorizada de BD, sin caché que sobreviva a revocación/suspensión; no se usan *custom claims* para autorización.
 - **Justificación**: revocación inmediata y consistencia multi‑negocio; los claims quedan obsoletos hasta renovar token.
 - **Alternativas**: claims en `app_metadata` (más rápido, pero stale y por‑negocio incómodo).
 - **Riesgos**: una consulta extra por request (mínima, indexada). **Impacto**: optimizable con caché.
@@ -108,11 +111,19 @@ Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto fut
 - **Alternativas**: contadores en Postgres (más carga y latencia), WAF de Vercel (complemento, no sustituto de límites por teléfono/token).
 - **Riesgos**: dependencia adicional; si cae → política *fail‑open* para lectura y *fail‑closed* para creación pública. **Impacto**: sustituible.
 
-## ADR-017 — Feed de cambios con cursor `(updated_at, id)` y solapamiento
-- **Decisión**: ver doc 05 §4; consumidor idempotente.
-- **Justificación**: simple y robusto frente a commits fuera de orden.
-- **Alternativas**: secuencia global (mismos huecos de visibilidad), CDC/logical replication (excesivo), webhooks (futuro, complementarios).
-- **Riesgos**: reprocesar duplicados (inocuo por idempotencia). **Impacto**: webhooks salientes cuando existan terceros.
+## ADR-017 — Sincronización: reemplazo del cursor temporal
+- **Decisión revisada (14.D)**: se retira la garantía de `(updated_at,id)` con ventana
+  fija. MVP con barridos completos paginados/reconciliación (05 §4, 07 §6), sin changes
+  habilitado como feed garantizado. No se elimina el objetivo de reportes confiables.
+- **Justificación**: timestamps e IDs de inserción no ordenan commits; la ventana puede
+  perder una transacción tardía. La reconciliación debe cubrir historia y bajas.
+- **Evolución condicionada**: outbox durable en la transacción y publicador de eventos
+  confirmados con orden seguro y watermark sin saltos. Diseño P-05 y pruebas antes
+  de habilitar endpoint; CDC se evalúa si crece la complejidad, no se incorpora ahora.
+- **Riesgos**: cuotas/duración de barridos, cambios durante paginación, tombstones,
+  alcance histórico y recuperación parcial. No confundir convergencia con snapshot
+  instantáneo ni outbox de email con registro de cambios de integración.
+
 
 ## ADR-018 — Superadmin sin acceso implícito; acceso de soporte con motivo y expiración
 - **Decisión**: `support_grants` + auditoría + aviso al owner.
@@ -121,6 +132,35 @@ Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto fut
 - **Riesgos**: fricción para soporte. **Impacto**: base para certificaciones futuras.
 
 ---
+
+## ADR-019 — Identidad y privilegios dentro de la BD
+- **Regla consolidada (14.A/E)**: sesión desde auth.uid(), membresía activa, tenant
+  y permiso verificados en cada escritura. Sin autoridad por actor_id, headers o
+  rol del body. Integración/worker: operaciones específicas con capacidad verificable,
+  atribución real y credencial de lectura incapaz de escribir también en BD.
+- **Propuesta P-01**: app_server sin acceso de tablas y separación public/app/api/
+  app_internal, service_role sólo Auth Admin/Storage; matriz por tabla/función y
+  propietarios revisados. No se consideran creados ni aprobados sus grants exactos.
+- **Control**: search_path vacío, EXECUTE PUBLIC/defaults revocados, helpers mínimos
+  antirrecursión con catálogo, auditoría y pruebas directas. FORCE RLS no elimina
+  bypass de propietario/superusuario. Soporte explícito y no vencido.
+
+## ADR-020 — Precondiciones e idempotencia atómicas
+- **Regla consolidada (14.G)**: If-Match fuerte y versión de recurso, 428 si falta,
+  412 obsoleto, 409 conflicto de negocio. Update condicional y versión/eventos/
+  auditoría/outbox/resultado idempotente en una sola transacción.
+- **Control**: hash por intención/precondición y ámbito tenant+autoridad+operación;
+  key con payload diferente no devuelve respuesta vieja. Reautorizar cada replay.
+- **Pendiente P-06**: recursos de control globales y persistencia segura de respuesta
+  de creación con token de gestión; no guardar secretos en texto plano por idempotencia.
+
+## ADR-021 — Rangos y referencias externas
+- **Reglas consolidadas (14.C/F)**: tiempos derivados y verificados por igualdad,
+  snapshots históricos sin cambios por catálogo; referencias polimórficas validadas
+  transaccionalmente por tipo/tenant y unicidad 1:1 sólo donde corresponde.
+- **Pendientes P-02/P-04**: aprobar ocupación histórica recomendada y mecanismo físico
+  de mapeos (validación transaccional o referencias tipadas), con concurrencia de
+  bajas/fusiones y permisos mínimos.
 
 ## Decisiones diferidas (con punto de extensión definido)
 | Tema | Cuándo decidir | Punto de extensión ya presente |
@@ -131,3 +171,28 @@ Formato: **Decisión · Justificación · Alternativas · Riesgos · Impacto fut
 | WhatsApp | Tras validar email | `notifications.channel`, `NotificationProvider` |
 | Dominios personalizados | Demanda comercial | Resolvedor de tenant único |
 | Cola externa de jobs | Si el volumen lo exige | Outbox + workers idempotentes |
+
+## ADR-022 — Base mínima de membresías en S1
+
+Estado: aprobado explícitamente por el usuario el 2026-10-31 (variante recomendada).
+Se cierra P-01/P-07 para S1 conforme SPRINT_1_DESIGN.md: users/business_members base,
+negocios/settings, RLS, helper mínimo, lectura pública por rol técnico sin tablas.
+Propietario de funciones locales: postgres; ningún rol de API hereda ese propietario.
+app_server nace NOLOGIN en migración; una herramienta local aprovisiona conexión
+con contraseña aleatoria fuera de Git. Sin Auth, invitaciones, gestión de roles/MFA
+ni cambios en carpetas. El fixture transaccional de identidad no acredita login real.
+Las escrituras de usuario siguen denegadas hasta las operaciones de S2/sprints propios.
+
+## ADR-023 — Sesiones y membresías del Sprint 2
+
+Estado: Sprint 2 autorizado expresamente por el usuario el 2026-10-31.
+Decisiones técnicas de ejecución y matriz en SPRINT_2_DESIGN.md.
+SSR oficial con cookies HttpOnly y operaciones Auth en servidor; sin sesión en
+localStorage. Proveedor email activo, registro público deshabilitado, TOTP exigido
+en PostgreSQL para privilegios owner/admin/plataforma. Roles desde membresía vigente.
+Invitación de negocio de un uso/7 días separada del alta Auth por email con OTP de
+una hora; enlace de negocio mostrado al emisor para compartirlo de forma privada.
+Tokens sólo hasheados en BD, fragmento en enlace, renovación/revocación con versión.
+Se expone api en PostgREST, con grants por RPC; app/app_internal siguen privados.
+service_role se limita a Auth Admin; app_server no gana permisos de sesión ni tablas.
+No hay acceso de soporte implícito para platform_admins, ni soporte remoto/GAS.

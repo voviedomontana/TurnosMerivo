@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "purpose": "staging",
+  "dataPolicy": "synthetic-only",
+  "isolationConfirmed": true,
+  "supabaseProjectRef": "kuqtskhtsvpluhalxiav",
+  "forbiddenSupabaseProjectRefs": ["aadrzawmzrstpyuluxqk"],
+  "vercelTeamSlug": "merivo-group",
+  "vercelProjectId": "",
+  "origin": ""
+}

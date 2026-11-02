@@ -1,6 +1,9 @@
+> Consolidación 2026-10-31: doc 14 incorporado. Propuestas P-xx y gates en
+> [informe de consolidación](CONSOLIDATION_REPORT.md); esta edición no autoriza implementación.
+
 # 01 — Visión del producto
 
-> Estado: v1.0 (borrador de arquitectura para validación). Idioma de producto: es-AR. Moneda inicial: ARS.
+> Estado: consolidación documental v1.1 (doc 14 incorporado; propuestas pendientes en CONSOLIDATION_REPORT.md). Idioma de producto: es-AR. Moneda inicial: ARS.
 
 ## 1. Resumen ejecutivo
 
@@ -9,7 +12,7 @@ Se construirá una **plataforma de turnos independiente** (nombre de trabajo: *T
 Puntos centrales:
 
 1. **La consistencia de reservas la garantiza PostgreSQL**, no el frontend ni Apps Script: restricción de exclusión (`EXCLUDE USING gist`) sobre rangos de tiempo por profesional, más funciones SQL transaccionales que validan horarios, bloqueos y políticas.
-2. **La app de Google Apps Script (GAS) no se migra.** Consume una **API REST versionada** con credenciales revocables y de alcance limitado. El modelo recomendado es **híbrido**: agendas bajo demanda + sincronización incremental de reportes hacia una hoja de lectura.
+2. **La app de Google Apps Script (GAS) no se migra.** Consume una **API REST versionada** con credenciales revocables y de alcance limitado. El modelo recomendado es **híbrido**: agenda bajo demanda + barridos completos paginados y reconciliación de reportes hacia una hoja de lectura. El feed incremental garantizado queda condicionado a diseño y pruebas de publicación segura (docs 05 §4 y 07 §6).
 3. **Clientes**: el teléfono normalizado (E.164) es el identificador principal dentro de un negocio. Instagram es un atributo opcional y un *vínculo* (tabla `external_id_mappings`), nunca clave universal.
 4. **Notificaciones** mediante patrón *outbox* transaccional con reintentos e idempotencia.
 5. **Sin sobreingeniería**: sin microservicios, colas externas ni Kubernetes. Un cron + `FOR UPDATE SKIP LOCKED` alcanza para el volumen esperado.
@@ -45,7 +48,7 @@ Veredicto sobre el stack propuesto (Next.js + Supabase + Vercel + Tailwind/shadc
 ## 4. Alcance
 
 ### 4.1 Dentro del MVP
-Negocio + configuración; profesionales; servicios; horarios, descansos, excepciones, bloqueos; motor de disponibilidad; reservas públicas sin cuenta; gestión de estados; clientes con deduplicación; notificaciones por **email** (confirmación, cancelación, reprogramación, recordatorio); panel admin (agenda diaria/semanal, alta manual, bloqueos, clientes, estadísticas básicas); panel del barbero; API de integración; integración con GAS (lectura de agenda, acciones de estado, vínculo con Registro de Servicios); auditoría; PWA instalable.
+Negocio + configuración; profesionales; servicios; horarios, descansos, excepciones, bloqueos; motor de disponibilidad; reservas públicas sin cuenta; gestión de estados; clientes con deduplicación; notificaciones por **email** (confirmación, cancelación, reprogramación, recordatorio); panel admin (agenda diaria/semanal, alta manual, bloqueos, clientes, estadísticas básicas); panel del barbero; API de integración; integración con GAS (lectura de agenda, reportes y precarga de Registro de Servicios; acciones de estado y vínculo desde TurnosMerivo autenticado, o Modo A sólo tras validar identidad individual); auditoría; PWA instalable.
 
 ### 4.2 Fuera del MVP (diferido, con puntos de extensión definidos)
 Facturación recurrente del SaaS; registro autónomo de barberías (onboarding self-service); Mercado Pago/señas (el modelo ya contempla `pending` con `expires_at`); WhatsApp (canal ya modelado en `notifications.channel`); Google Calendar; múltiples sucursales; dominios personalizados; reportes avanzados; multi-servicio por turno; lista de espera; OTP para clientes.
@@ -64,9 +67,9 @@ Facturación recurrente del SaaS; registro autónomo de barberías (onboarding s
 
 ## 6. Preguntas realmente bloqueantes
 
-**Ninguna bloquea el inicio del Sprint 0–5.** Las siguientes deben resolverse **antes del Sprint 11** (integración GAS), con el supuesto por defecto indicado:
+Las preguntas de GAS se resuelven antes del Sprint 11. Para iniciar S1 rige además el checklist de CONSOLIDATION_REPORT.md: la dependencia de membresías y el contrato de privilegios requieren aprobación técnica, sin adelantar login funcional.
 
-1. ¿Cómo se identifica hoy cada barbero en la app GAS (login propio, cuenta Google)? *Por defecto*: Modo B (clave de servicio + actor asertado) hasta confirmar.
+1. ¿Cómo se identifica hoy cada barbero en la app GAS (login propio, cuenta Google)? *Por defecto*: Modo B de sólo lectura (clave de integración compartida; actor asertado sin valor de autorización) hasta confirmar.
 2. ¿Se puede agregar una columna de ID estable en Registro de Servicios? *Por defecto*: sí.
 
 ## 7. Riesgos principales
@@ -78,7 +81,7 @@ Facturación recurrente del SaaS; registro autónomo de barberías (onboarding s
 | Suplantación de barbero desde GAS | Media | Alto | Tokens por usuario; scopes mínimos; auditoría |
 | Abuso del endpoint público | Alta | Medio | Rate limiting, Turnstile, límites por teléfono/IP |
 | Duplicados de clientes | Alta | Medio | Normalización E.164, cola de revisión, función de fusión |
-| Cuotas de Apps Script (UrlFetch, 6 min de ejecución) | Media | Medio | Caché corto, sincronización incremental, lotes |
+| Cuotas de Apps Script (UrlFetch, duración limitada de ejecución) | Media | Medio | Caché de lecturas, barridos paginados y checkpoints; validar cuotas antes de S11 |
 | Cumplimiento Ley 25.326 | Media | Alto | Controles técnicos + validación legal (doc 08) |
 | Sobrealcance en implementación con Codex | Alta | Medio | Guía de implementación y definición de terminado por sprint |
 
