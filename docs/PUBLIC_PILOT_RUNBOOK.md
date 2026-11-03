@@ -6,10 +6,16 @@ activación en la instancia del propietario ni captación de datos reales.
 
 Actualización de destinos: el usuario creó Supabase staging kuqtskhtsvpluhalxiav
 (us-east-1), verificado Healthy y sin migraciones. Vercel merivo-group sigue sin
-proyecto. El remoto GitHub público contiene sólo docs; requiere publicar el código
-antes de una integración útil. Ver STAGING_PROVISIONING_REPORT.md,
+proyecto. El código acumulado se publicó en codex/staging-readiness, commit
+9d7d7dcb219bba89bcbb10249407d551fbefed8a; main no cambió. Ver STAGING_PROVISIONING_REPORT.md,
 GITHUB_PUBLICATION_REVIEW.md y STAGING_TARGET_PENDING.json. El destino anterior
 aadrzawmzrstpyuluxqk queda expresamente excluido de la preparación.
+
+Corrección de Data API del 2026-11-03: el contrato final exige **public y api**;
+app/app_internal permanecen privados. No basta con exponer public porque el cliente
+de sesión consume api. Seguir STAGING_DATA_API_CONTRACT.md; no agrega permisos ni
+autoriza cambios alojados. En un proyecto sin migraciones, api aún no existe y se
+configurará después del lote que lo cree, cuando ese lote esté autorizado.
 
 ## Estado y criterio de apertura
 

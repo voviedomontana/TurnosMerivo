@@ -11,6 +11,7 @@ import { runCustomerConcurrency } from "./lib/customer-concurrency.mjs";
 import { runScheduleConcurrency } from "./lib/schedule-concurrency.mjs";
 import { runAppointmentConcurrency } from "./lib/appointment-concurrency.mjs";
 import { runPublicBookingConcurrency } from "./lib/public-booking-concurrency.mjs";
+import { runDataApiContract } from "./lib/data-api-contract.mjs";
 import {
   runAm0405Integration,
   verifyAm04LegacyMigration,
@@ -480,6 +481,7 @@ try {
     assert.equal((await privateRead(user, other)).status, 404);
   }
   stage = "real authenticated RPC compatibility";
+  await runDataApiContract({ prefix, rest, users, call });
   for (const user of users.slice(0, 3)) {
     const selector = await rpc("me", {}, user);
     assert.equal(selector.status, 200);

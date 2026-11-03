@@ -30,6 +30,11 @@ el roadmap; registrar diferencias sin sobrescribir documentación técnica aprob
 - P-01/P-07 aprobadas: app_server sin tablas y operaciones internas; service_role sólo
   Auth Admin/Storage cuando corresponda, nunca negocio rutinario ni cliente/HTML/GAS.
   Matriz y base de membresías aprobadas en docs/SPRINT_1_DESIGN.md.
+- Contrato Data API: exponer public y api (RPC de sesión); app y app_internal
+  permanecen privados. Exposición no concede EXECUTE/SELECT. No quitar api por
+  confundirlo con helpers privados: src/modules/auth/service.ts lo consume.
+  Reconciliación y secuencia de staging en docs/STAGING_DATA_API_CONTRACT.md;
+  no es autorización de cambios de permisos o configuración remotos.
 - Modo B/service_key sólo lectura, incluidos links/mappings/import. Modo A requiere
   operador y tokens validados; UserProperties no basta como prueba de identidad.
 - No prometer feed por timestamp, secuencia o ventana fija: MVP con barridos completos

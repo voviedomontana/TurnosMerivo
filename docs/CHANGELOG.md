@@ -1,5 +1,16 @@
 # Registro de cambios de especificación
 
+## 2026-11-03 — Reconciliación de exposición de Data API
+
+Corrección explícita del runbook y errata en STAGING_PROVISIONING_REPORT.md: el
+cliente de sesión necesita api además de public, como ya configura el CLI. Nuevo
+STAGING_DATA_API_CONTRACT.md distingue exposición, grants y RLS; app/app_internal
+no se exponen. Dos tests de configuración y dieciséis comprobaciones HTTP reales
+en entorno descartable protegen ese contrato. Sin cambios al runtime, roles,
+migraciones, main, servicios alojados o datos del propietario. Resultados en
+STAGING_DATA_API_RECONCILIATION_REPORT.md. No se reinterpretan los quince documentos
+históricos formateados ni se renueva automáticamente el permiso de commit/push.
+
 ## 2026-11-02 — Publicación inicial del código en rama de staging
 
 Autorización explícita de commit/push exclusivamente a codex/staging-readiness,

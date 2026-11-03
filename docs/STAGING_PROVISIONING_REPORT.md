@@ -2,6 +2,15 @@
 
 Fecha: 2026-11-02. Continuación del piloto público. No habilita reservas reales.
 
+## Corrección posterior — 2026-11-03
+
+Las recomendaciones de este informe de dejar sólo public y nunca exponer api
+eran incorrectas. El contrato implementado usa **public y api**; únicamente app y
+app_internal son privados de aplicación. Ver STAGING_DATA_API_CONTRACT.md y sus
+pruebas. Esta corrección sustituye esas instrucciones; las observaciones del
+panel y resultados del 2026-11-02 se conservan como historia, sin alterarlos.
+No se realizó un cambio remoto como parte de esta corrección.
+
 ## Destinos observados
 
 El usuario proporcionó Supabase aadrzawmzrstpyuluxqk y equipo Vercel merivo-group.
